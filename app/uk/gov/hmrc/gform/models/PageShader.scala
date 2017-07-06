@@ -30,6 +30,7 @@ import uk.gov.hmrc.gform.service.{ PrepopService, RepeatingComponentService }
 import uk.gov.hmrc.play.frontend.auth.AuthContext
 import uk.gov.hmrc.play.http.HeaderCarrier
 
+import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
@@ -43,20 +44,23 @@ class PageShader(
 )(implicit authContext: AuthContext, hc: HeaderCarrier) {
 
   def render(): Future[PageForRender] = {
-    val snippetsSeq = section.fields.map(f => htmlFor(f, 0))
-    val snippets = Future.sequence(snippetsSeq)
+    val snippetsSeq = section.fields.map(fv => htmlFor(fv, 0, mutable.LinkedHashMap.empty[FieldValue, Future[Html]]))
+    val snippetsSeq2 = section.fields.foldLeft(mutable.LinkedHashMap.empty[FieldValue, Future[Html]]) {
+      case (acc: mutable.LinkedHashMap[FieldValue, Future[Html]], curr: FieldValue) => acc += (curr -> htmlFor(curr, 0, acc))
+    }.values.toList
+    val snippets = Future.sequence(snippetsSeq2)
     val javasctipt = fieldJavascript(formTemplate.sections.flatMap(_.atomicFields(repeatService)))
     snippets.map(snippets => PageForRender(curr, section.title, hiddenSnippets, snippets, javasctipt))
   }
 
-  private def htmlFor(orgFieldValue: FieldValue, instance: Int): Future[Html] = {
+  private def htmlFor(orgFieldValue: FieldValue, instance: Int, sofar: mutable.LinkedHashMap[FieldValue, Future[Html]]): Future[Html] = {
     val fieldValue = adjustIdForRepeatingGroups(orgFieldValue, instance)
     fieldValue.`type` match {
-      case g @ Group(fvs, orientation, _, _, _, _) => htmlForGroup(g, fieldValue, fvs, orientation)
+      case g @ Group(fvs, orientation, _, _, _, _) => htmlForGroup(g, fieldValue, fvs, orientation, sofar)
       case Date(_, offset, dateValue) => htmlForDate(fieldValue, offset, dateValue)
       case Address(international) => htmlForAddress(fieldValue, international, instance)
       case t @ Text(expr, _) => htmlForText(fieldValue, t, expr)
-      case Choice(choice, options, orientation, selections, optionalHelpText) => htmlForChoice(fieldValue, choice, options, orientation, selections, optionalHelpText)
+      case Choice(choice, options, orientation, selections, optionalHelpText) => htmlForChoice0(fieldValue, choice, options, orientation, selections, optionalHelpText, sofar)
       case FileUpload() => htmlForFileUpload(fieldValue)
       case InformationMessage(infoType, infoText) => htmlForInformationMessage(fieldValue, infoType, infoText)
     }
@@ -89,6 +93,32 @@ class PageShader(
     Future.successful(snippet)
   }
 
+  private def htmlForChoice0(fieldValue: FieldValue, choice: ChoiceType, options: NonEmptyList[String], orientation: Orientation, selections: List[Int], optionalHelpText: Option[List[String]], sofar: mutable.LinkedHashMap[FieldValue, Future[Html]]) = {
+
+    val fvsdependentOnThisChoice: List[FieldValue] = sofar.keys.filter {
+      case (fv) => fv.shortName.getOrElse("-").init == fieldValue.id.value
+    }.toList
+
+    if (fvsdependentOnThisChoice.isEmpty)
+      htmlForChoice(fieldValue, choice, options, orientation, selections, optionalHelpText)
+    else {
+      val eventualHtml = sofar.get(fvsdependentOnThisChoice.head).get
+
+      sofar.remove(fvsdependentOnThisChoice.head)
+      htmlForCollapsable(fieldValue, options, orientation, selections, optionalHelpText, eventualHtml)
+    }
+
+  }
+
+  def htmlForCollapsable(fieldValue: FieldValue, options: NonEmptyList[String], orientation: Orientation, selections: List[Int], optionalHelpText: Option[List[String]], collapsable: Future[Html]) = {
+    val prepopValues = fieldData.get(fieldValue.id) match {
+      case None => selections.map(_.toString).toSet
+      case Some(_) => Set.empty[String] // Don't prepop something we already submitted
+    }
+
+    collapsable.map(html => uk.gov.hmrc.gform.views.html.collapsable("checkbox", fieldValue, options, orientation, prepopValues, f.getOrElse(okF)(fieldValue), html))
+  }
+
   private def htmlForText(fieldValue: FieldValue, t: Text, expr: Expr) = {
     val prepopValueF = fieldData.get(fieldValue.id) match {
       case None => PrepopService.prepopData(expr, formTemplate.formTypeId)
@@ -106,21 +136,21 @@ class PageShader(
     Future.successful(uk.gov.hmrc.gform.views.html.field_template_date(fieldValue, f.getOrElse(okF)(fieldValue), prepopValues))
   }
 
-  private def htmlForGroup(groupField: Group, fieldValue: FieldValue, fvs: List[FieldValue], orientation: Orientation) = {
+  private def htmlForGroup(groupField: Group, fieldValue: FieldValue, fvs: List[FieldValue], orientation: Orientation, sofar: mutable.LinkedHashMap[FieldValue, Future[Html]]) = {
 
-    def fireHtmlGeneration(count: Int) = (0 until count).flatMap { count =>
+    def fireHtmlGeneration(count: Int, sofar: mutable.LinkedHashMap[FieldValue, Future[Html]]) = (0 until count).flatMap { count =>
       if (count == 0) {
-        fvs.map(fv => htmlFor(fv, count))
+        fvs.map(fv => htmlFor(fv, count, sofar))
       } else {
         Future.successful(Html(s"""<div><legend class="h3-heading">${groupField.repeatLabel.getOrElse("")} ${count}</legend>""")) +:
-          fvs.map(fv => htmlFor(fv, count)) :+
+          fvs.map(fv => htmlFor(fv, count, sofar)) :+
           Future.successful(Html("</div>"))
       }
     }.toList
 
     for {
       (count, limitReached) <- repeatService.getCountAndTestIfLimitReached(fieldValue, groupField)
-      lhtml <- Future.sequence(fireHtmlGeneration(count))
+      lhtml <- Future.sequence(fireHtmlGeneration(count, sofar))
     } yield uk.gov.hmrc.gform.views.html.group(fieldValue, groupField, lhtml, orientation, limitReached)
   }
 
