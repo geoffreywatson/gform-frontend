@@ -18,14 +18,8 @@ package uk.gov.hmrc.gform.controllers
 
 import javax.inject.Inject
 
-import play.api.i18n.{ I18nSupport, Messages, MessagesApi }
-import play.api.mvc
-import play.api.mvc.{ Action, AnyContent, Request, Result }
+import play.api.i18n.{ I18nSupport, MessagesApi }
 import uk.gov.hmrc.gform.auth.AuthModule
-import uk.gov.hmrc.play.frontend.auth
-import uk.gov.hmrc.play.frontend.auth.AuthContext
-
-import scala.concurrent.Future
 
 class ControllersModule @Inject() (messagesApi: MessagesApi, authModule: AuthModule) {
   self =>

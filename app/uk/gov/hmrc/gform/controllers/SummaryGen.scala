@@ -20,6 +20,7 @@ import javax.inject.{ Inject, Singleton }
 
 import play.api.i18n.{ I18nSupport, MessagesApi }
 import play.api.libs.json.Json
+import uk.gov.hmrc.gform.FrontendAuthConnector
 import uk.gov.hmrc.gform.controllers.helpers.FormDataHelpers._
 import uk.gov.hmrc.gform.gformbackend.model.{ FormId, FormTypeId, Version }
 import uk.gov.hmrc.gform.models._
@@ -40,6 +41,7 @@ class SummaryGen @Inject() (val messagesApi: MessagesApi, val sec: SecuredAction
     }
 
   def submit(formTypeId: FormTypeId, version: Version) = sec.SecureWithTemplateAsync(formTypeId, version) { authContext => implicit request =>
+
     processResponseDataFromBody(request) { data =>
       get(data, FieldId("save")) match {
         case "Exit" :: Nil =>
@@ -47,8 +49,15 @@ class SummaryGen @Inject() (val messagesApi: MessagesApi, val sec: SecuredAction
         case "Continue" :: Nil =>
           anyFormId(data) match {
             case Some(formId) =>
-              SaveService.sendSubmission(formTypeId, formId).
-                map(r => Ok(Json.obj("envelope" -> r.body, "formId" -> Json.toJson(formId))))
+
+              val summary = Summary(request.formTemplate)
+              for {
+                formData <- SaveService.getFormById(formTypeId, version, formId)
+                html = uk.gov.hmrc.gform.views.html.summary(request.formTemplate, summary.summaryForRender(formDataMap(formData), formId, repeatService), formId)
+                response <- SaveService.sendSubmission(formTypeId, formId, html)
+              } yield Ok(Json.obj("envelope" -> response.body, "formId" -> Json.toJson(formId)))
+            //              SaveService.sendSubmission(formTypeId, formId).
+            //                map(r => Ok(Json.obj("envelope" -> r.body, "formId" -> Json.toJson(formId))))
             case None =>
               Future.successful(BadRequest("No formId"))
           }

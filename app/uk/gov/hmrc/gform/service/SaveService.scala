@@ -16,11 +16,12 @@
 
 package uk.gov.hmrc.gform.service
 
+import play.twirl.api.Html
 import uk.gov.hmrc.gform.connectors.GformConnector
 import uk.gov.hmrc.gform.gformbackend.model.{ FormData, FormId, FormTypeId, Version }
 import uk.gov.hmrc.gform.models.SaveResult
 import uk.gov.hmrc.play.http.{ HeaderCarrier, HttpResponse }
-
+import sun.misc.BASE64Encoder
 import scala.concurrent.Future
 
 object SaveService {
@@ -39,7 +40,8 @@ object SaveService {
     gformConnector.updateForm(formId, formData, tolerant)
   }
 
-  def sendSubmission(formTypeId: FormTypeId, formId: FormId)(implicit hc: HeaderCarrier): Future[HttpResponse] = {
-    gformConnector.sendSubmission(formTypeId, formId)
+  def sendSubmission(formTypeId: FormTypeId, formId: FormId, html: Html)(implicit hc: HeaderCarrier): Future[HttpResponse] = {
+    //val htmlBase64 = new BASE64Encoder().encode(html.toString.getBytes())
+    gformConnector.sendSubmission(formTypeId, formId, html.toString)
   }
 }
