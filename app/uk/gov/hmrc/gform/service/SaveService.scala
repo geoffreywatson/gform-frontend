@@ -42,6 +42,6 @@ object SaveService {
 
   def sendSubmission(formTypeId: FormTypeId, formId: FormId, html: Html)(implicit hc: HeaderCarrier): Future[HttpResponse] = {
     //val htmlBase64 = new BASE64Encoder().encode(html.toString.getBytes())
-    gformConnector.sendSubmission(formTypeId, formId, html.toString)
+    gformConnector.sendSubmission(formTypeId, formId, html.body)
   }
 }

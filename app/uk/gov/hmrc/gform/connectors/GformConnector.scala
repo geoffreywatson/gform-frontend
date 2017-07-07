@@ -17,14 +17,14 @@
 package uk.gov.hmrc.gform.connectors
 
 import play.api.libs.json.JsObject
-import play.mvc.Http.{HeaderNames, MimeTypes}
+import play.mvc.Http.{ HeaderNames, MimeTypes }
 import uk.gov.hmrc.gform.WSHttp
-import uk.gov.hmrc.gform.gformbackend.model.{FormData, FormId, FormTypeId, Version}
+import uk.gov.hmrc.gform.gformbackend.model.{ FormData, FormId, FormTypeId, Version }
 import uk.gov.hmrc.gform.models.SaveResult
 import uk.gov.hmrc.play.config.ServicesConfig
 import uk.gov.hmrc.play.http._
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{ ExecutionContext, Future }
 
 trait GformConnector {
 
@@ -52,9 +52,9 @@ trait GformConnector {
     httpPut.PUT[FormData, SaveResult](s"$baseUrl/forms/${formId.value}?tolerant=$tolerant", formData)
   }
 
-  def sendSubmission(formTypeId: FormTypeId, formId: FormId, base64EncodedHtml: String)(implicit hc: HeaderCarrier): Future[HttpResponse] = {
+  def sendSubmission(formTypeId: FormTypeId, formId: FormId, html: String)(implicit hc: HeaderCarrier): Future[HttpResponse] = {
     val contentType = (HeaderNames.CONTENT_TYPE, MimeTypes.TEXT)
-    httpPost.POST[String, HttpResponse](s"$baseUrl/forms/${formTypeId.value}/submission/${formId.value}", base64EncodedHtml, Seq(contentType))
+    httpPost.POSTString[HttpResponse](s"$baseUrl/forms/${formTypeId.value}/submission/${formId.value}", html * 30, Seq(contentType))
   }
 }
 

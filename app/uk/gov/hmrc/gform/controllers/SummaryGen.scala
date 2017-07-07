@@ -53,11 +53,10 @@ class SummaryGen @Inject() (val messagesApi: MessagesApi, val sec: SecuredAction
               val summary = Summary(request.formTemplate)
               for {
                 formData <- SaveService.getFormById(formTypeId, version, formId)
-                html = uk.gov.hmrc.gform.views.html.summary(request.formTemplate, summary.summaryForRender(formDataMap(formData), formId, repeatService), formId)
+                html = uk.gov.hmrc.gform.views.html.summary_pdf(request.formTemplate, summary.summaryForRender(formDataMap(formData), formId, repeatService), formId)
                 response <- SaveService.sendSubmission(formTypeId, formId, html)
               } yield Ok(Json.obj("envelope" -> response.body, "formId" -> Json.toJson(formId)))
-            //              SaveService.sendSubmission(formTypeId, formId).
-            //                map(r => Ok(Json.obj("envelope" -> r.body, "formId" -> Json.toJson(formId))))
+            //              val cosa = controllers.routes.Assets.versioned("javascripts/gform.js").absoluteURL
             case None =>
               Future.successful(BadRequest("No formId"))
           }
