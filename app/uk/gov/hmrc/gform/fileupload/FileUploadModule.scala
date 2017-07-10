@@ -14,12 +14,17 @@
  * limitations under the License.
  */
 
-package uk.gov.hmrc.gform.gformbackend.model
+package uk.gov.hmrc.gform.fileupload
 
-import play.api.libs.json._
+import javax.inject.Inject
 
-case class FileId(value: String)
+import uk.gov.hmrc.gform.config.ConfigModule
+import uk.gov.hmrc.gform.wshttp.WSHttpModule
 
-object FileId {
-  implicit val format: Reads[FileId] = (__ \ 'id).read[String].map(FileId(_))
+class FileUploadModule @Inject() (wSHttpModule: WSHttpModule, configModule: ConfigModule) {
+
+  val fileUploadService = new FileUploadService(fileUploadConnector)
+
+  private lazy val fileUploadBaseUrl = configModule.serviceConfig.baseUrl("file-upload") + "/file-upload"
+  private lazy val fileUploadConnector = new FileUploadConnector(wSHttpModule.auditableWSHttp, fileUploadBaseUrl)
 }

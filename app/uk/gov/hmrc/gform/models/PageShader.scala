@@ -21,6 +21,7 @@ import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.markdown.parser.MarkdownParser
 import play.twirl.api.Html
+import uk.gov.hmrc.gform.fileupload.Envelope
 import uk.gov.hmrc.gform.gformbackend.model.FormTemplate
 import uk.gov.hmrc.gform.models.components._
 import uk.gov.hmrc.gform.models.helpers.DateHelperFunctions.withOffset
@@ -40,7 +41,8 @@ class PageShader(
     formTemplate: FormTemplate,
     section: Section,
     f: Option[FieldValue => Option[FormFieldValidationResult]],
-    repeatService: RepeatingComponentService
+    repeatService: RepeatingComponentService,
+    envelope: Envelope
 )(implicit authContext: AuthContext, hc: HeaderCarrier) {
 
   def render(): Future[PageForRender] = {
@@ -74,7 +76,7 @@ class PageShader(
   }
 
   private def htmlForFileUpload(fieldValue: FieldValue) = {
-    Future.successful(uk.gov.hmrc.gform.views.html.file_upload(fieldValue))
+    Future.successful(uk.gov.hmrc.gform.views.html.field_template_file_upload(fieldValue, validate(fieldValue)))
   }
 
   private def htmlForChoice(fieldValue: FieldValue, choice: ChoiceType, options: NonEmptyList[String], orientation: Orientation, selections: List[Int], optionalHelpText: Option[List[String]]) = {
@@ -85,9 +87,9 @@ class PageShader(
 
     val snippet =
       choice match {
-        case Radio | YesNo => uk.gov.hmrc.gform.views.html.choice("radio", fieldValue, options, orientation, prepopValues, f.getOrElse(okF)(fieldValue), optionalHelpText)
-        case Checkbox => uk.gov.hmrc.gform.views.html.choice("checkbox", fieldValue, options, orientation, prepopValues, f.getOrElse(okF)(fieldValue), optionalHelpText)
-        case Inline => uk.gov.hmrc.gform.views.html.choiceInline(fieldValue, options, prepopValues, f.getOrElse(okF)(fieldValue), optionalHelpText)
+        case Radio | YesNo => uk.gov.hmrc.gform.views.html.choice("radio", fieldValue, options, orientation, prepopValues, validate(fieldValue), optionalHelpText)
+        case Checkbox => uk.gov.hmrc.gform.views.html.choice("checkbox", fieldValue, options, orientation, prepopValues, validate(fieldValue), optionalHelpText)
+        case Inline => uk.gov.hmrc.gform.views.html.choiceInline(fieldValue, options, prepopValues, validate(fieldValue), optionalHelpText)
       }
 
     Future.successful(snippet)
@@ -124,16 +126,16 @@ class PageShader(
       case None => PrepopService.prepopData(expr, formTemplate.formTypeId)
       case _ => Future.successful("") // Don't prepop something we already submitted
     }
-    prepopValueF.map(prepopValue => uk.gov.hmrc.gform.views.html.field_template_text(fieldValue, t, prepopValue, f.getOrElse(okF)(fieldValue)))
+    prepopValueF.map(prepopValue => uk.gov.hmrc.gform.views.html.field_template_text(fieldValue, t, prepopValue, validate(fieldValue)))
   }
 
   private def htmlForAddress(fieldValue: FieldValue, international: Boolean, instance: Int) = {
-    Future.successful(uk.gov.hmrc.gform.views.html.field_template_address(international, fieldValue, f.getOrElse(okF)(fieldValue), instance))
+    Future.successful(uk.gov.hmrc.gform.views.html.field_template_address(international, fieldValue, validate(fieldValue), instance))
   }
 
   private def htmlForDate(fieldValue: FieldValue, offset: Offset, dateValue: Option[DateValue]) = {
     val prepopValues = dateValue.map(DateExpr.fromDateValue).map(withOffset(offset, _))
-    Future.successful(uk.gov.hmrc.gform.views.html.field_template_date(fieldValue, f.getOrElse(okF)(fieldValue), prepopValues))
+    Future.successful(uk.gov.hmrc.gform.views.html.field_template_date(fieldValue, validate(fieldValue), prepopValues))
   }
 
   private def htmlForGroup(groupField: Group, fieldValue: FieldValue, fvs: List[FieldValue], orientation: Orientation, sofar: mutable.LinkedHashMap[FieldValue, Future[Html]]) = {
@@ -164,5 +166,7 @@ class PageShader(
 
   private lazy val hiddenTemplateFields = formTemplate.sections.filterNot(_ == section).flatMap(_.atomicFields(repeatService))
   private lazy val hiddenSnippets = Fields.toFormField(fieldData, hiddenTemplateFields, repeatService).map(formField => uk.gov.hmrc.gform.views.html.hidden_field(formField))
-  private lazy val okF: FieldValue => Option[FormFieldValidationResult] = Fields.okValues(fieldData, section.atomicFields(repeatService), repeatService)
+  private lazy val okF: FieldValue => Option[FormFieldValidationResult] = Fields.okValues(fieldData, section.atomicFields(repeatService), repeatService, envelope)
+  private def validate(fieldValue: FieldValue): Option[FormFieldValidationResult] = f.getOrElse(okF)(fieldValue)
+
 }

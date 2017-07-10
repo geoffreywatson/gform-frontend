@@ -14,12 +14,14 @@
  * limitations under the License.
  */
 
-package uk.gov.hmrc.gform.gformbackend.model
+package uk.gov.hmrc.gform.validation
 
-import play.api.libs.json._
+import javax.inject.Inject
 
-case class FileId(value: String)
+import uk.gov.hmrc.gform.fileupload.FileUploadModule
 
-object FileId {
-  implicit val format: Reads[FileId] = (__ \ 'id).read[String].map(FileId(_))
+class ValidationModule @Inject() (fileUploadModule: FileUploadModule) {
+
+  val validationService = new ValidationService(fileUploadModule.fileUploadService)
+
 }

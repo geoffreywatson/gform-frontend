@@ -14,12 +14,17 @@
  * limitations under the License.
  */
 
-package uk.gov.hmrc.gform.gformbackend.model
+package uk.gov.hmrc.gform.fileupload
 
-import play.api.libs.json._
+import uk.gov.hmrc.gform.gformbackend.model.{ EnvelopeId, FileId }
+import uk.gov.hmrc.play.http.HeaderCarrier
 
-case class FileId(value: String)
+import scala.concurrent.Future
 
-object FileId {
-  implicit val format: Reads[FileId] = (__ \ 'id).read[String].map(FileId(_))
+class FileUploadService(fileUploadConnector: FileUploadConnector) {
+
+  def getEnvelope(envelopeId: EnvelopeId)(implicit hc: HeaderCarrier): Future[Envelope] = {
+    fileUploadConnector.getEnvelope(envelopeId)
+  }
+
 }
