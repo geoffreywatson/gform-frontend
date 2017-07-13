@@ -18,6 +18,7 @@ package uk.gov.hmrc.gform.controllers
 
 import javax.inject.{ Inject, Singleton }
 
+import org.jsoup.Jsoup
 import play.api.i18n.{ I18nSupport, MessagesApi }
 import play.api.libs.json.Json
 import play.api.mvc.AnyContent
@@ -70,16 +71,17 @@ class SummaryGen @Inject() (val messagesApi: MessagesApi, val sec: SecuredAction
         case "Continue" :: Nil =>
           anyFormId(data) match {
             case Some(formId) =>
-              getHtmlForPDFGeneration(formId, version, formTypeId).flatMap { html =>
-                if (IsEncrypt.is) {
-                  authConnector.getUserDetails[UserId](authContext).flatMap { x =>
-                    SaveService.sendSubmission(formTypeId, x, version, html).
-                      map(r => Ok(Json.obj("envelope" -> r.body, "formId" -> Json.toJson(formId))))
-                  }
-                } else {
-                  SaveService.sendSubmission(formTypeId, formId, html).
-                    map(r => Ok(Json.obj("envelope" -> r.body, "formId" -> Json.toJson(formId))))
-                }
+              if (IsEncrypt.is) {
+                for {
+                  userId <- authConnector.getUserDetails[UserId](authContext)
+                  html <- getHtmlForPDFGeneration(formId, version, formTypeId, Some(userId))
+                  response <- SaveService.sendSubmission(formTypeId, userId, version, html)
+                } yield Ok(Json.obj("envelope" -> response.body, "formId" -> Json.toJson(formId)))
+              } else {
+                for {
+                  html <- getHtmlForPDFGeneration(formId, version, formTypeId)
+                  response <- SaveService.sendSubmission(formTypeId, formId, html)
+                } yield Ok(Json.obj("envelope" -> response.body, "formId" -> Json.toJson(formId)))
               }
             case None =>
               Future.successful(BadRequest("No formId"))
@@ -90,17 +92,28 @@ class SummaryGen @Inject() (val messagesApi: MessagesApi, val sec: SecuredAction
     }
   }
 
-  private def getHtmlForPDFGeneration(formId: FormId, version: Version, formTypeId: FormTypeId)
-                                     (implicit request: RequestWithTemplate[AnyContent]) = {
+  private def getHtmlForPDFGeneration(formId: FormId, version: Version, formTypeId: FormTypeId, userId: Option[UserId] = None)(implicit request: RequestWithTemplate[AnyContent]) = {
+
     val summary = Summary(request.formTemplate)
     val envelopeId = request.session.getEnvelopeId.get
+    val formF = userId match {
+      case Some(userId) => SaveService.getFormByIdCache(formTypeId, version, userId)
+      case None => SaveService.getFormById(formTypeId, version, formId)
+    }
+
     for {
-      form <- SaveService.getFormById(formTypeId, version, formId)
+      form <- formF
       envelop <- fileUploadService.getEnvelope(envelopeId)
-    } yield uk.gov.hmrc.gform.views.html.summary_pdf(
-      request.formTemplate,
-      summary.summaryForRender(formDataMap(form.formData), formId, repeatService, envelop), formId
-    )
+    } yield {
+      val html = uk.gov.hmrc.gform.views.html.summary_pdf(
+        request.formTemplate,
+        summary.summaryForRender(formDataMap(form.formData), formId, repeatService, envelop), formId
+      )
+      val doc = Jsoup.parse(html.body)
+      doc.getAllElements.removeAttr("class")
+      doc.select("a").remove
+      Html(doc.toString)
+    }
   }
 
   private lazy val fileUploadService = fileUploadModule.fileUploadService

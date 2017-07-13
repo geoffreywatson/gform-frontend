@@ -18,9 +18,9 @@ package uk.gov.hmrc.gform.service
 
 import play.twirl.api.Html
 import uk.gov.hmrc.gform.connectors.GformConnector
-import uk.gov.hmrc.gform.gformbackend.model.{FormData, FormId, FormTypeId, Version, _}
-import uk.gov.hmrc.gform.models.{SaveResult, UserId}
-import uk.gov.hmrc.play.http.{HeaderCarrier, HttpResponse}
+import uk.gov.hmrc.gform.gformbackend.model.{ FormData, FormId, FormTypeId, Version, _ }
+import uk.gov.hmrc.gform.models.{ SaveResult, UserId }
+import uk.gov.hmrc.play.http.{ HeaderCarrier, HttpResponse }
 
 import scala.concurrent.Future
 
@@ -45,6 +45,7 @@ object SaveService {
   }
 
   def sendSubmission(formTypeId: FormTypeId, userId: UserId, version: Version, html: Html)(implicit hc: HeaderCarrier): Future[HttpResponse] = {
+    println(s"[[[${html.body}]]]")
     gformConnector.sendSubmission(formTypeId, userId, version, html.body)
   }
 }

@@ -27,7 +27,8 @@ object FrontendBuild extends Build with MicroService {
     "org.jetbrains" % "markdown" % "0.1.25",
     "com.chuusai" %% "shapeless" % "2.3.2",
     "com.github.pureconfig" %% "pureconfig" % "0.7.2",
-    "uk.gov.hmrc" %% "http-caching-client" % "6.3.0"
+    "uk.gov.hmrc" %% "http-caching-client" % "6.3.0",
+    "org.jsoup" % "jsoup" % "1.8.1"
   )
 
   def test(scope: String = "test") = Seq(
