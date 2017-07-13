@@ -25,6 +25,7 @@ import cats.instances.either._
 import cats.instances.list._
 import cats.syntax.traverse._
 import cats.syntax.either._
+import uk.gov.hmrc.gform.fileupload.{ Envelope, File }
 import uk.gov.hmrc.gform.gformbackend.model.FormField
 
 sealed trait FormFieldValidationResult {
@@ -100,12 +101,12 @@ case class ComponentField(fieldValue: FieldValue, data: Map[String, FormFieldVal
 
 object ValidationUtil {
 
-  type GFormError = Map[FieldId, Set[String]]
-  type ValidatedLocalDate = Validated[GFormError, LocalDate]
+  type GformError = Map[FieldId, Set[String]]
+  type ValidatedLocalDate = Validated[GformError, LocalDate]
   type ValidatedNumeric = Validated[String, Int]
-  type ValidatedConcreteDate = Validated[GFormError, ConcreteDate]
+  type ValidatedConcreteDate = Validated[GformError, ConcreteDate]
 
-  type ValidatedType = Validated[GFormError, Unit]
+  type ValidatedType = Validated[GformError, Unit]
 
   val printErrors: (Map[String, Set[String]]) => Set[String] = (map: Map[String, Set[String]]) => {
     map.foldLeft(Set[String]())(_ ++ _._2)
@@ -123,11 +124,11 @@ object ValidationUtil {
     }
   }
 
-  def evaluateWithSuffix[t <: ComponentType](component: ComponentType, fieldValue: FieldValue, gFormErrors: Map[FieldId, Set[String]])(dGetter: (FieldId) => Seq[String]): List[(FieldId, FormFieldValidationResult)] = {
+  def evaluateWithSuffix[t <: ComponentType](component: ComponentType, fieldValue: FieldValue, gformErrors: Map[FieldId, Set[String]])(dGetter: (FieldId) => Seq[String]): List[(FieldId, FormFieldValidationResult)] = {
     component match {
       case Address(_) => Address.allFieldIds(fieldValue.id).map { fieldId =>
 
-        gFormErrors.get(fieldId) match {
+        gformErrors.get(fieldId) match {
           //with suffix
           case Some(errors) => (fieldId, FieldError(fieldValue, dGetter(fieldId).headOption.getOrElse(""), errors))
           case None => (fieldId, FieldOk(fieldValue, dGetter(fieldId).headOption.getOrElse("")))
@@ -136,7 +137,7 @@ object ValidationUtil {
 
       case Date(_, _, _) => Date.allFieldIds(fieldValue.id).map { fieldId =>
 
-        gFormErrors.get(fieldId) match {
+        gformErrors.get(fieldId) match {
           //with suffix
           case Some(errors) => (fieldId, FieldError(fieldValue, dGetter(fieldId).headOption.getOrElse(""), errors))
           case None => (fieldId, FieldOk(fieldValue, dGetter(fieldId).headOption.getOrElse("")))
@@ -147,16 +148,17 @@ object ValidationUtil {
     }
   }
 
-  def evaluateWithoutSuffix(fieldValue: FieldValue, gFormErrors: Map[FieldId, Set[String]])(dGetter: (FieldId) => Seq[String]): (FieldId, FormFieldValidationResult) = {
+  def evaluateWithoutSuffix(fieldValue: FieldValue, gformErrors: Map[FieldId, Set[String]])(dGetter: (FieldId) => Seq[String]): (FieldId, FormFieldValidationResult) = {
 
-    gFormErrors.get(fieldValue.id) match {
+    gformErrors.get(fieldValue.id) match {
       //without suffix
       case Some(errors) => (fieldValue.id, FieldGlobalError(fieldValue, dGetter(fieldValue.id).headOption.getOrElse(""), errors))
       case None => (fieldValue.id, FieldGlobalOk(fieldValue, dGetter(fieldValue.id).headOption.getOrElse("")))
     }
   }
 
-  def evaluateValidationResult(allFields: List[FieldValue], validationResult: ValidatedType, data: Map[FieldId, Seq[String]]): Either[List[FormFieldValidationResult], List[FormFieldValidationResult]] = {
+  def evaluateValidationResult(atomicFields: List[FieldValue], validationResult: ValidatedType, data: Map[FieldId, Seq[String]],
+    envelope: Envelope): Either[List[FormFieldValidationResult], List[FormFieldValidationResult]] = {
 
     val dataGetter: FieldId => Seq[String] = fId => data.get(fId).toList.flatten
 
@@ -167,7 +169,7 @@ object ValidationUtil {
       case Valid(()) => Map.empty[FieldId, Set[String]]
     }
 
-    val resultErrors: List[FormFieldValidationResult] = allFields.map { fieldValue =>
+    val resultErrors: List[FormFieldValidationResult] = atomicFields.map { fieldValue =>
 
       fieldValue.`type` match {
         case address @ Address(_) =>
@@ -225,7 +227,13 @@ object ValidationUtil {
 
               ComponentField(fieldValue, optionalData.getOrElse(Map.empty))
           }
-        case FileUpload() => FieldOk(fieldValue, "TODO-I-dont-know-what-to-put-here")
+        case FileUpload() => {
+          val fileName = envelope.files.find(_.fileId.value == fieldValue.id.value).map(_.fileName).getOrElse("please upload file")
+          gFormErrors.get(fieldValue.id) match {
+            case Some(errors) => FieldError(fieldValue, fileName, errors)
+            case None => FieldOk(fieldValue, fileName)
+          }
+        }
         case InformationMessage(_, infoText) => FieldOk(fieldValue, infoText)
       }
 

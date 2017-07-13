@@ -18,18 +18,21 @@ package uk.gov.hmrc.gform.models
 
 import org.jsoup.Jsoup
 import org.scalatest.mockito.MockitoSugar.mock
-import org.scalatest.{ FlatSpec, Matchers }
+import org.scalatest.{FlatSpec, Matchers}
+import uk.gov.hmrc.gform.Spec
 import uk.gov.hmrc.gform.connectors.SessionCacheConnector
-import uk.gov.hmrc.gform.gformbackend.model.{ FormTemplate, FormTypeId, Version }
-import uk.gov.hmrc.gform.models.components.{ FieldId, FieldValue, InformationMessage, StandardInfo, _ }
+import uk.gov.hmrc.gform.fileupload.{Envelope, FileUploadService}
+import uk.gov.hmrc.gform.gformbackend.model.{FormTemplate, FormTypeId, Version}
+import uk.gov.hmrc.gform.models.components.{FieldId, FieldValue, InformationMessage, StandardInfo, _}
 import uk.gov.hmrc.gform.service.RepeatingComponentService
 import uk.gov.hmrc.play.frontend.auth.AuthContext
 import uk.gov.hmrc.play.http.HeaderCarrier
+
 import scala.collection.immutable.List
-import scala.concurrent.{ Await, Future }
+import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 
-class PageForRenderSpec extends FlatSpec with Matchers {
+class PageForRenderSpec extends Spec {
 
   val markdown =
     """
@@ -99,6 +102,7 @@ class PageForRenderSpec extends FlatSpec with Matchers {
   )
 
   val mockRepeatService = mock[RepeatingComponentService]
+  val envelope = Envelope(files = Nil)
   implicit val hc = HeaderCarrier()
   implicit val mockAuthContext = mock[AuthContext]
 
@@ -109,7 +113,8 @@ class PageForRenderSpec extends FlatSpec with Matchers {
       formTemplate = formTemplate,
       section = section,
       f = None,
-      mockRepeatService
+      mockRepeatService,
+      envelope
     )
 
     val pageToRender = Await.result(pageToRenderF, 10 seconds)
@@ -176,8 +181,11 @@ class PageForRenderSpec extends FlatSpec with Matchers {
         multipleCopiesOf(grpTextField, 2)
       }
 
-      override def getCountAndTestIfLimitReached(fieldValue: FieldValue, groupField: Group)(implicit hc: HeaderCarrier) = {
-        Future.successful((2, false))
+      override def getRepeatingGroupsForRendering(topFieldValue: FieldValue, groupField: Group)(implicit hc: HeaderCarrier) = {
+        Future.successful((List(
+          multipleCopiesOf(grpTextField, 1),
+          multipleCopiesOf(grpTextField, 1)
+        ), false))
       }
     }
 
@@ -187,15 +195,16 @@ class PageForRenderSpec extends FlatSpec with Matchers {
       formTemplate = formTemplate.copy(sections = List(grpSection)),
       section = grpSection,
       f = None,
-      testGrpRepSrvc
+      testGrpRepSrvc,
+      envelope
     )
 
     val pageToRender = Await.result(pageToRenderF, 10 seconds)
     val doc = Jsoup.parse(pageToRender.snippets.head.toString)
 
-    doc.getElementsByAttributeValue("value", "AddGroup-GROUP_ID").size shouldBe 1 // no limit reached, add button shown
-    doc.getElementsByAttributeValue("value", "CONSTANT_TEXT").size shouldBe 2 // two repeat elements
-    doc.getElementsContainingOwnText("REPEAT_LABEL").size shouldBe 1 // repeat label only for second element
+    doc.getElementsByAttributeValue("value", "AddGroup-GROUP_ID").size shouldBe 1 withClue "no limit reached, add button shown"
+    doc.getElementsByAttributeValue("value", "CONSTANT_TEXT").size shouldBe 2 withClue "two repeat elements"
+    doc.getElementsContainingOwnText("REPEAT_LABEL").size shouldBe 2 withClue "repeat label only for second element"
   }
 
   it should "hide add-group button when limit has been reached (repeating groups)" in {
@@ -204,8 +213,11 @@ class PageForRenderSpec extends FlatSpec with Matchers {
         multipleCopiesOf(grpTextField, 2)
       }
 
-      override def getCountAndTestIfLimitReached(fieldValue: FieldValue, groupField: Group)(implicit hc: HeaderCarrier) = {
-        Future.successful((2, true))
+      override def getRepeatingGroupsForRendering(topFieldValue: FieldValue, groupField: Group)(implicit hc: HeaderCarrier) = {
+        Future.successful((List(
+          multipleCopiesOf(grpTextField, 1),
+          multipleCopiesOf(grpTextField, 1)
+        ), true))
       }
     }
 
@@ -215,7 +227,8 @@ class PageForRenderSpec extends FlatSpec with Matchers {
       formTemplate = formTemplate.copy(sections = List(grpSection)),
       section = grpSection,
       f = None,
-      testGrpRepSrvc
+      testGrpRepSrvc,
+      envelope
     )
 
     val pageToRender = Await.result(pageToRenderF, 10 seconds)

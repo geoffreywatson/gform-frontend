@@ -14,25 +14,17 @@
  * limitations under the License.
  */
 
-package uk.gov.hmrc.gform.models
+package uk.gov.hmrc.gform.fileupload
 
-import play.api.Logger
-import play.api.libs.json._
+import uk.gov.hmrc.gform.gformbackend.model.{ EnvelopeId, FileId }
+import uk.gov.hmrc.play.http.HeaderCarrier
 
-case class SaveResult(success: Option[String], error: Option[String])
+import scala.concurrent.Future
 
-object SaveResult {
+class FileUploadService(fileUploadConnector: FileUploadConnector) {
 
-  val reads = Reads[SaveResult] {
-    case x =>
-      Logger.info("THIS IS X: " + Json.prettyPrint(x))
-      JsSuccess(SaveResult(None, None))
-    case _ => JsError("THIS IS AN ERROR")
+  def getEnvelope(envelopeId: EnvelopeId)(implicit hc: HeaderCarrier): Future[Envelope] = {
+    fileUploadConnector.getEnvelope(envelopeId)
   }
 
-  val writes = Writes[SaveResult] { x =>
-    JsString(x.toString)
-  }
-
-  implicit val formats = Format[SaveResult](reads, writes) //Json.format[SaveResult]
 }

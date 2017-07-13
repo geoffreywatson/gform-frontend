@@ -14,25 +14,17 @@
  * limitations under the License.
  */
 
-package uk.gov.hmrc.gform.models
+package uk.gov.hmrc.gform.fileupload
 
-import play.api.Logger
-import play.api.libs.json._
+import javax.inject.Inject
 
-case class SaveResult(success: Option[String], error: Option[String])
+import uk.gov.hmrc.gform.config.ConfigModule
+import uk.gov.hmrc.gform.wshttp.WSHttpModule
 
-object SaveResult {
+class FileUploadModule @Inject() (wSHttpModule: WSHttpModule, configModule: ConfigModule) {
 
-  val reads = Reads[SaveResult] {
-    case x =>
-      Logger.info("THIS IS X: " + Json.prettyPrint(x))
-      JsSuccess(SaveResult(None, None))
-    case _ => JsError("THIS IS AN ERROR")
-  }
+  val fileUploadService = new FileUploadService(fileUploadConnector)
 
-  val writes = Writes[SaveResult] { x =>
-    JsString(x.toString)
-  }
-
-  implicit val formats = Format[SaveResult](reads, writes) //Json.format[SaveResult]
+  private lazy val fileUploadBaseUrl = configModule.serviceConfig.baseUrl("file-upload") + "/file-upload"
+  private lazy val fileUploadConnector = new FileUploadConnector(wSHttpModule.auditableWSHttp, fileUploadBaseUrl)
 }

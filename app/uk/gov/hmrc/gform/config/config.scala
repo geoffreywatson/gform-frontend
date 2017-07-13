@@ -34,8 +34,7 @@ class ConfigModule {
 
 case class AppConfig(
   appName: String,
-  fileUploadRedirect: String,
-  mongodb: Mongodb,
+  fileUploadRedirect: String, //TODO: we don't need it
   `google-analytics`: GoogleAnalytics,
   `government-gateway-sign-in-url`: String,
   `gform-frontend-base-url`: String
@@ -52,7 +51,6 @@ case class Assets(
 )
 
 case class ContactFrontend(host: String)
-case class Mongodb(uri: String)
 
 object AppConfig {
 

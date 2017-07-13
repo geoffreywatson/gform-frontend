@@ -14,25 +14,20 @@
  * limitations under the License.
  */
 
-package uk.gov.hmrc.gform.models
+package uk.gov.hmrc.gform.gformbackend.model
 
-import play.api.Logger
 import play.api.libs.json._
 
-case class SaveResult(success: Option[String], error: Option[String])
+case class SectionNumber(value: Int)
 
-object SaveResult {
+object SectionNumber {
+  implicit val format: Format[SectionNumber] = Format[SectionNumber](
+    Reads[SectionNumber] {
+      case JsNumber(n: BigDecimal) => JsSuccess(SectionNumber(n.toInt))
+      case unknown => JsError(s"JsNumber value expected, got: $unknown")
+    },
+    Writes[SectionNumber](a => JsNumber(a.value))
+  )
 
-  val reads = Reads[SaveResult] {
-    case x =>
-      Logger.info("THIS IS X: " + Json.prettyPrint(x))
-      JsSuccess(SaveResult(None, None))
-    case _ => JsError("THIS IS AN ERROR")
-  }
-
-  val writes = Writes[SaveResult] { x =>
-    JsString(x.toString)
-  }
-
-  implicit val formats = Format[SaveResult](reads, writes) //Json.format[SaveResult]
+  val firstSection = SectionNumber(0)
 }

@@ -2,21 +2,44 @@
 @import uk.gov.hmrc.play.views.html.helpers._
 @import views.html.helper.CSRF
 @import scala.concurrent.Future
+@import uk.gov.hmrc.gform.service.LabelHelper
 
 
-@(fieldValue: FieldValue, groupField: Group, snippets: List[Html], orientation: Orientation, disableAddButton: Boolean)
+@(fieldValue: FieldValue, groupField: Group, snippets: List[Html], orientation: Orientation, disableAddButton: Boolean, index: Int)
 
 
 <fieldset>
-  <div class="form-group divider--top--thick">
-      <legend class="h3-heading">@localisation(fieldValue.label)</legend>
-      @if(groupField.repeatAddAnotherText.isDefined && groupField.repeatsMax.isDefined && !disableAddButton) {
-      <button type="submit" class="button" name="save" value="AddGroup-@fieldValue.id">@localisation(groupField.repeatAddAnotherText.getOrElse("Add group"))</button>
-      }
-  </div>
+  <legend class="visuallyhidden">
+    Add @localisation(LabelHelper.buildRepeatingLabel(fieldValue, index))
+  </legend>
+
+  @if(groupField.repeatsMax.isDefined) {
+    <div class="subsection">
+      <div class="divider--bottom">
+        <div class="form-field-group">
+          <h2 class="heading-small">
+            @localisation(LabelHelper.buildRepeatingLabel(fieldValue, index))
+          </h2>
+        </div>
+      </div>
+    </div>
+  }
+
   <div class="field-group @if(orientation==Horizontal) {field-group--inline}">
     @{
   	   snippets
   	}
   </div>
+
+  @if(groupField.repeatsMax.isDefined && !disableAddButton) {
+  <div class="form-group">
+    <button
+      type="submit"
+      class="button button--link soft--left"
+      name="save"
+      value="AddGroup-@fieldValue.id">
+      @localisation(groupField.repeatAddAnotherText.getOrElse("Add another"))
+    </button>
+  </div>
+  }
 </fieldset>

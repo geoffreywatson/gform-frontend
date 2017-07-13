@@ -18,22 +18,22 @@ package uk.gov.hmrc.gform.service
 
 import play.twirl.api.Html
 import uk.gov.hmrc.gform.connectors.GformConnector
-import uk.gov.hmrc.gform.gformbackend.model.{ FormData, FormId, FormTypeId, Version }
-import uk.gov.hmrc.gform.models.SaveResult
-import uk.gov.hmrc.play.http.{ HeaderCarrier, HttpResponse }
-import sun.misc.BASE64Encoder
+import uk.gov.hmrc.gform.gformbackend.model.{FormData, FormId, FormTypeId, Version, _}
+import uk.gov.hmrc.gform.models.{SaveResult, UserId}
+import uk.gov.hmrc.play.http.{HeaderCarrier, HttpResponse}
+
 import scala.concurrent.Future
 
 object SaveService {
 
   def gformConnector: GformConnector = GformConnector
 
-  def getFormById(formTypeId: FormTypeId, version: Version, formId: FormId)(implicit hc: HeaderCarrier) = {
+  def getFormById(formTypeId: FormTypeId, version: Version, formId: FormId)(implicit hc: HeaderCarrier): Future[Form] = {
     gformConnector.form(formTypeId, version, formId)
   }
 
-  def saveFormData(formData: FormData, tolerant: Boolean)(implicit hc: HeaderCarrier): Future[SaveResult] = {
-    gformConnector.saveForm(formData, tolerant)
+  def getFormByIdCache(formTypeId: FormTypeId, version: Version, userId: UserId)(implicit hc: HeaderCarrier) = {
+    gformConnector.getByIdCache(formTypeId, version, userId)
   }
 
   def updateFormData(formId: FormId, formData: FormData, tolerant: Boolean)(implicit hc: HeaderCarrier): Future[SaveResult] = {
@@ -41,7 +41,10 @@ object SaveService {
   }
 
   def sendSubmission(formTypeId: FormTypeId, formId: FormId, html: Html)(implicit hc: HeaderCarrier): Future[HttpResponse] = {
-    //val htmlBase64 = new BASE64Encoder().encode(html.toString.getBytes())
     gformConnector.sendSubmission(formTypeId, formId, html.body)
+  }
+
+  def sendSubmission(formTypeId: FormTypeId, userId: UserId, version: Version, html: Html)(implicit hc: HeaderCarrier): Future[HttpResponse] = {
+    gformConnector.sendSubmission(formTypeId, userId, version, html.body)
   }
 }

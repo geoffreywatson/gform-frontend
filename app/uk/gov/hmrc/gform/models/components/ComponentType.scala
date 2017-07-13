@@ -30,13 +30,23 @@ case class Text(value: Expr, total: Boolean) extends ComponentType
 case class Date(constraintType: DateConstraintType, offset: Offset, value: Option[DateValue]) extends ComponentType
 
 case class Group(
-  fields: List[FieldValue],
-  orientation: Orientation,
-  repeatsMax: Option[Int] = None,
-  repeatsMin: Option[Int] = None,
-  repeatLabel: Option[String] = None,
-  repeatAddAnotherText: Option[String] = None
-) extends ComponentType
+    fields: List[FieldValue],
+    orientation: Orientation,
+    repeatsMax: Option[Int] = None,
+    repeatsMin: Option[Int] = None,
+    repeatLabel: Option[String] = None,
+    repeatAddAnotherText: Option[String] = None
+) extends ComponentType {
+
+  def buildRepeatLabel(instance: Int) = {
+    val rawlabel = repeatLabel.getOrElse("")
+    if (rawlabel.contains("$n")) {
+      rawlabel.replace("$n", instance.toString)
+    } else {
+      rawlabel
+    }
+  }
+}
 
 case class FileUpload() extends ComponentType
 
@@ -53,7 +63,6 @@ case object Address {
 case class InformationMessage(infoType: InfoType, infoText: String) extends ComponentType
 
 sealed trait InfoType
-
 case object StandardInfo extends InfoType
 
 case object LongInfo extends InfoType

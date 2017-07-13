@@ -14,12 +14,14 @@
  * limitations under the License.
  */
 
-package uk.gov.hmrc.gform.models
+package uk.gov.hmrc.gform.validation
 
-import play.api.libs.json.Json
+import javax.inject.Inject
 
-case class SaveResult(success: Option[String], error: Option[String])
+import uk.gov.hmrc.gform.fileupload.FileUploadModule
 
-object SaveResult {
-  implicit val formats = Json.format[SaveResult]
+class ValidationModule @Inject() (fileUploadModule: FileUploadModule) {
+
+  val validationService = new ValidationService(fileUploadModule.fileUploadService)
+
 }
