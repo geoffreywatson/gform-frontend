@@ -24,7 +24,7 @@ import cats.syntax.all._
 import play.api.data.Forms.mapping
 import play.api.libs.json.Json
 import play.api.mvc.Results.Redirect
-import play.api.mvc.{ Action, AnyContent, Request, Result }
+import play.api.mvc.{Action, AnyContent, Request, Result}
 import uk.gov.hmrc.gform.auth._
 import uk.gov.hmrc.gform.auth.models._
 import uk.gov.hmrc.gform.config.ConfigModule
@@ -32,16 +32,17 @@ import uk.gov.hmrc.gform.controllers.helpers.FormDataHelpers.processResponseData
 import uk.gov.hmrc.gform.fileupload.FileUploadModule
 import uk.gov.hmrc.gform.gformbackend.GformBackendModule
 import uk.gov.hmrc.gform.gformbackend.model._
-import uk.gov.hmrc.gform.models.{ Page, UserId }
+import uk.gov.hmrc.gform.models.{Page, UserId}
 import uk.gov.hmrc.gform.models.components.FieldId
-import uk.gov.hmrc.gform.service.{ DeleteService, RepeatingComponentService, RetrieveService }
+import uk.gov.hmrc.gform.service.{DeleteService, RepeatingComponentService, RetrieveService}
 import uk.gov.hmrc.gform.models.ValidationUtil.ValidatedType
 import uk.gov.hmrc.gform.models._
-import uk.gov.hmrc.gform.models.components.{ FieldId, FieldValue }
+import uk.gov.hmrc.gform.models.components.{FieldId, FieldValue}
 import uk.gov.hmrc.gform.prepop.PrepopModule
-import uk.gov.hmrc.gform.service.{ RepeatingComponentService, SaveService }
+import uk.gov.hmrc.gform.service.{RepeatingComponentService, SaveService}
 import uk.gov.hmrc.gform.validation.ValidationModule
 import uk.gov.hmrc.http.cache.client.CacheMap
+import uk.gov.hmrc.play.frontend.auth.AuthContext
 import uk.gov.hmrc.play.frontend.controller.FrontendController
 import uk.gov.hmrc.play.http.HeaderCarrier
 
@@ -159,27 +160,30 @@ class FormController @Inject() (
     }
   }
 
+  def userIdF(authContext: AuthContext)(implicit hc: HeaderCarrier): Future[UserId] = authConnector.getUserDetails[UserId](authContext)
+
+  def formF(formId: FormId)(implicit hc: HeaderCarrier): Future[Form] = gformConnector.getForm(formId)
+
+  def envelopeIdF(formF : Future[Form]): Future[EnvelopeId] = formF.map(_.envelopeId)
+
   def updateFormData(formId: FormId, sectionNumber: SectionNumber) = authentication.async { implicit c =>
 
-    val formF = gformConnector.getForm(formId)
-    val envelopeIdF = formF.map(_.envelopeId)
     val envelopeF = for {
-      envelopeId <- envelopeIdF
+      envelopeId <- envelopeIdF(formF(formId))
       envelope <- fileUploadService.getEnvelope(envelopeId)
     } yield envelope
 
     val formTemplateF = for {
-      form <- formF
+      form <- formF(formId)
       formTemplate <- gformConnector.getFormTemplate(form.formData.formTypeId)
     } yield formTemplate
 
     val pageF = for {
-      form <- formF
+      form <- formF(formId)
       envelope <- envelopeF
       formTemplate <- formTemplateF
     } yield Page(formId, sectionNumber, formTemplate, repeatService, envelope, form.envelopeId, prepopService)
 
-    val userIdF = authConnector.getUserDetails[UserId](authContext)
 
     processResponseDataFromBody(request) { (data: Map[FieldId, Seq[String]]) =>
 
@@ -195,7 +199,7 @@ class FormController @Inject() (
 
       val validatedDataResult: Future[ValidatedType] = for {
         atomicFields <- atomicFields
-        form <- formF
+        form <- formF(formId)
         envelopeId = form.envelopeId
         validatedData <- Future.sequence(atomicFields.map(fv =>
           validationService.validateComponents(fv, data, envelopeId)))
@@ -204,7 +208,7 @@ class FormController @Inject() (
       val finalResult: Future[Either[List[FormFieldValidationResult], List[FormFieldValidationResult]]] =
         for {
           validatedDataResult <- validatedDataResult
-          form <- formF
+          form <- formF(formId)
           envelopeId = form.envelopeId
           envelope <- fileUploadService.getEnvelope(envelopeId)
           atomicFields <- allAtomicFields
@@ -233,25 +237,9 @@ class FormController @Inject() (
           }
       } //End processSaveAndContinue
 
-      def processSaveAndExit(userId: UserId, form: Form, envelopeId: EnvelopeId): Future[Result] = {
-
-        val formFieldsList: Future[List[FormFieldValidationResult]] = finalResult.map {
-          case Left(formFieldResultList) => formFieldResultList
-          case Right(formFieldResultList) => formFieldResultList
-        }
-
-        val formFieldIds: Future[List[List[FormField]]] = formFieldsList.map(_.map(_.toFormFieldTolerant))
-        val formFields: Future[List[FormField]] = formFieldIds.map(_.flatten)
-
-        val formData = formFields.map(formFields => FormData(userId, form.formData.formTypeId, "UTF-8", formFields))
-
-        formData.flatMap(formData =>
-          SaveService.updateFormData(formId, formData, tolerant = true).map(response => Ok(uk.gov.hmrc.gform.views.html.hardcoded.pages.save_acknowledgement(formId, formData.formTypeId))))
-      }
-
       val optNextPage = for {// format: OFF
         envelope     <- envelopeF
-        envelopeId   <- envelopeIdF
+        envelopeId   <- envelopeIdF(formF(formId))
         formTemplate <- formTemplateF
         sections     <- repeatService.getAllSections(formTemplate)
         booleanExprs  = sections.map(_.includeIf.getOrElse(IncludeIf(IsTrue)).expr)
@@ -267,23 +255,16 @@ class FormController @Inject() (
           action match {
             case SaveAndContinue(nextPageToRender) =>
               for {
-                userId <- userIdF
-                form <- formF
+                userId <- userIdF(authContext)
+                form <- formF(formId)
                 result <- processSaveAndContinue(userId, form)(nextPageToRender.renderPage(data, formId, None))
               } yield result
 
-            case SaveAndExit =>
-              for {
-                userId <- userIdF
-                form <- formF
-                envelopeId <- envelopeIdF
-                result <- processSaveAndExit(userId, form, envelopeId)
-              } yield result
-
+            case SaveAndExit => processSaveAndExit(finalResult, formId)
             case SaveAndSummary =>
               for {
-                userId <- userIdF
-                form <- formF
+                userId <- userIdF(authContext)
+                form <- formF(formId)
                 result <- processSaveAndContinue(userId, form)(Future.successful(Redirect(routes.SummaryGen.summaryById(formId))))
               } yield result
 
@@ -306,6 +287,31 @@ class FormController @Inject() (
 
     }
 
+  }
+
+  def processSaveAndExit(finalResult: Future[Either[List[FormFieldValidationResult], List[FormFieldValidationResult]]], formId: FormId)(implicit authContext : AuthContext, hc: HeaderCarrier, request: Request[AnyContent]): Future[Result] = {
+
+    def process(userId: UserId, form: Form, envelopeId: EnvelopeId) = {
+      val formFieldsList: Future[List[FormFieldValidationResult]] = finalResult.map {
+        case Left(formFieldResultList) => formFieldResultList
+        case Right(formFieldResultList) => formFieldResultList
+      }
+
+      val formFieldIds: Future[List[List[FormField]]] = formFieldsList.map(_.map(_.toFormFieldTolerant))
+      val formFields: Future[List[FormField]] = formFieldIds.map(_.flatten)
+
+      val formData = formFields.map(formFields => FormData(userId, form.formData.formTypeId, "UTF-8", formFields))
+
+      formData.flatMap(formData =>
+        SaveService.updateFormData(formId, formData, tolerant = true).map(response => Ok(uk.gov.hmrc.gform.views.html.hardcoded.pages.save_acknowledgement(formId, formData.formTypeId))))
+    }
+
+    for {
+      userId <- userIdF(authContext)
+      form <- formF(formId)
+      envelopeId <- envelopeIdF(formF(formId))
+      result <- process(userId, form, envelopeId)
+    } yield result
   }
 
   private def extractedFieldValue(validResult: FormFieldValidationResult): FieldValue = validResult match {
