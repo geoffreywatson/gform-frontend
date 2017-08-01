@@ -67,12 +67,12 @@ class FormController @Inject() (
     val userDetailsF = authorisationService.getUserDetail
 
     for {// format: OFF
-      formTemplate  <- gformConnector.getFormTemplate(formTypeId)
-      userDetails   <- userDetailsF
-      authorised    <- authorisationService.doAuthorise(formTemplate, userDetails)
-      result         <- parseResponse(authorised, formTypeId, userDetails)
-      //(form, wasFormFound)     <- getOrStartForm(formTypeId, userId)
-      // format: ON
+      formTemplate <- gformConnector.getFormTemplate(formTypeId)
+      userDetails <- userDetailsF
+      authorised <- authorisationService.doAuthorise(formTemplate, userDetails)
+      result <- parseResponse(authorised, formTypeId, userDetails)
+    //(form, wasFormFound)     <- getOrStartForm(formTypeId, userId)
+    // format: ON
     } yield result
   }
 
@@ -111,14 +111,14 @@ class FormController @Inject() (
   def form(formId: FormId, sectionNumber: SectionNumber) = authentication.async { implicit c =>
 
     for {// format: OFF
-      form           <- gformConnector.getForm(formId)
-      fieldData       = getFormData(form)
-      formTemplateF   = gformConnector.getFormTemplate(form.formData.formTypeId)
-      envelopeF       = fileUploadService.getEnvelope(form.envelopeId)
-      formTemplate   <- formTemplateF
-      envelope       <- envelopeF
-      response       <- Page(formId, sectionNumber, formTemplate, repeatService, envelope, form.envelopeId, prepopService).renderPage(fieldData, formId, None)
-      // format: ON
+      form <- gformConnector.getForm(formId)
+      fieldData = getFormData(form)
+      formTemplateF = gformConnector.getFormTemplate(form.formData.formTypeId)
+      envelopeF = fileUploadService.getEnvelope(form.envelopeId)
+      formTemplate <- formTemplateF
+      envelope <- envelopeF
+      response <- Page(formId, sectionNumber, formTemplate, repeatService, envelope, form.envelopeId, prepopService).renderPage(fieldData, formId, None)
+    // format: ON
     } yield response
   }
 
@@ -129,6 +129,7 @@ class FormController @Inject() (
     val `redirect-error-url` = appConfig.`gform-frontend-base-url` + routes.FormController.form(formId, sectionNumber)
 
     def actionUrl(envelopeId: EnvelopeId) = s"/file-upload/upload/envelopes/${envelopeId.value}/files/${fileId.value}?redirect-success-url=${`redirect-success-url`}&redirect-error-url=${`redirect-error-url`}"
+
     for {
       form <- gformConnector.getForm(formId)
       formTemplate <- gformConnector.getFormTemplate(form.formData.formTypeId)
@@ -145,9 +146,8 @@ class FormController @Inject() (
 
   def decision(formTypeId: FormTypeId, formId: FormId): Action[AnyContent] = authentication.async { implicit c =>
     choice.bindFromRequest.fold(
-      _ => Future.successful(BadRequest(uk.gov.hmrc.gform.views.html.hardcoded.pages.continue_form_page(formTypeId, formId))),
-      {
-        case "continue" => Future.successful(Redirect(routes.FormController.form(formId, firstSection /*TODO: once we store section number we could continumer from specific section*/ )))
+      _ => Future.successful(BadRequest(uk.gov.hmrc.gform.views.html.hardcoded.pages.continue_form_page(formTypeId, formId))), {
+        case "continue" => Future.successful(Redirect(routes.FormController.form(formId, firstSection /*TODO: once we store section number we could continumer from specific section*/)))
         case "delete" => Future.successful(Ok(uk.gov.hmrc.gform.views.html.hardcoded.pages.confirm_delete(formTypeId, formId)))
         case _ => Future.successful(Redirect(routes.FormController.newForm(formTypeId)))
       }
@@ -160,45 +160,15 @@ class FormController @Inject() (
     }
   }
 
-  def userIdF(authContext: AuthContext)(implicit hc: HeaderCarrier): Future[UserId] = authConnector.getUserDetails[UserId](authContext)
-
-  def formF(formId: FormId)(implicit hc: HeaderCarrier): Future[Form] = gformConnector.getForm(formId)
-
-  def envelopeIdF(formF : Future[Form]): Future[EnvelopeId] = formF.map(_.envelopeId)
-
   def updateFormData(formId: FormId, sectionNumber: SectionNumber) = authentication.async { implicit c =>
-
-    val envelopeF = for {
-      envelopeId <- envelopeIdF(formF(formId))
-      envelope <- fileUploadService.getEnvelope(envelopeId)
-    } yield envelope
-
-    val formTemplateF = for {
-      form <- formF(formId)
-      formTemplate <- gformConnector.getFormTemplate(form.formData.formTypeId)
-    } yield formTemplate
-
-    val pageF = for {
-      form <- formF(formId)
-      envelope <- envelopeF
-      formTemplate <- formTemplateF
-    } yield Page(formId, sectionNumber, formTemplate, repeatService, envelope, form.envelopeId, prepopService)
-
-
     processResponseDataFromBody(request) { (data: Map[FieldId, Seq[String]]) =>
 
-      val atomicFields = for {
-        formTemplate <- formTemplateF
-        sections <- repeatService.getAllSections(formTemplate)
-        section = sections(sectionNumber.value)
-      } yield section.atomicFields(repeatService)
-
       val allAtomicFields = for {
-        page <- pageF
+        page <- pageF(formId, sectionNumber)
       } yield page.allAtomicFields
 
       val validatedDataResult: Future[ValidatedType] = for {
-        atomicFields <- atomicFields
+        atomicFields <- atomicFields(formId, sectionNumber)
         form <- formF(formId)
         envelopeId = form.envelopeId
         validatedData <- Future.sequence(atomicFields.map(fv =>
@@ -214,82 +184,83 @@ class FormController @Inject() (
           atomicFields <- allAtomicFields
         } yield ValidationUtil.evaluateValidationResult(atomicFields, validatedDataResult, data, envelope)
 
-      def processSaveAndContinue(userId: UserId, form: Form)(continue: Future[Result])(implicit hc: HeaderCarrier): Future[Result] = finalResult.flatMap {
-        case Left(listFormValidation) =>
-          val map: Map[FieldValue, FormFieldValidationResult] = listFormValidation.map { (validResult: FormFieldValidationResult) =>
-            extractedFieldValue(validResult) -> validResult
-          }.toMap
-
-          pageF.flatMap(page => page.renderPage(data, formId, Some(map.get)))
-
-        case Right(listFormValidation) =>
-
-          val formFieldIds = listFormValidation.map(_.toFormField)
-          val formFields = formFieldIds.sequenceU.map(_.flatten).toList.flatten
-
-          val formData = FormData(userId, form.formData.formTypeId, "UTF-8", formFields)
-
-          SaveService.updateFormData(formId, formData, false).flatMap {
-            case SaveResult(_, Some(error)) => Future.successful(BadRequest(error))
-            case _ =>
-
-              continue
-          }
-      } //End processSaveAndContinue
+      //End processSaveAndContinue
 
       val optNextPage = for {// format: OFF
-        envelope     <- envelopeF
-        envelopeId   <- envelopeIdF(formF(formId))
-        formTemplate <- formTemplateF
-        sections     <- repeatService.getAllSections(formTemplate)
-        booleanExprs  = sections.map(_.includeIf.getOrElse(IncludeIf(IsTrue)).expr)
+        envelope <- envelopeF(formId)
+        envelopeId <- envelopeIdF(formF(formId))
+        formTemplate <- formTemplateF(formId)
+        sections <- repeatService.getAllSections(formTemplate)
+        booleanExprs = sections.map(_.includeIf.getOrElse(IncludeIf(IsTrue)).expr)
         optSectionIdx = BooleanExpr.nextTrueIdxOpt(sectionNumber.value, booleanExprs, data).map(SectionNumber(_))
-        // format: ON
+      // format: ON
       } yield optSectionIdx.map(sectionNumber => Page(formId, sectionNumber, formTemplate, repeatService, envelope, envelopeId, prepopService))
 
       val actionE: Future[Either[String, FormAction]] = optNextPage.map(optNextPage => FormAction.determineAction(data, optNextPage))
 
       actionE.flatMap {
         case Right(action) =>
-
           action match {
-            case SaveAndContinue(nextPageToRender) =>
-              for {
-                userId <- userIdF(authContext)
-                form <- formF(formId)
-                result <- processSaveAndContinue(userId, form)(nextPageToRender.renderPage(data, formId, None))
-              } yield result
-
+            case SaveAndContinue(nextPageToRender) => processSaveAndContinue(finalResult, formId, sectionNumber, data)(nextPageToRender.renderPage(data, formId, None))
             case SaveAndExit => processSaveAndExit(finalResult, formId)
-            case SaveAndSummary =>
-              for {
-                userId <- userIdF(authContext)
-                form <- formF(formId)
-                result <- processSaveAndContinue(userId, form)(Future.successful(Redirect(routes.SummaryGen.summaryById(formId))))
-              } yield result
-
-            case AddGroup(groupId) =>
-              for {
-                _ <- repeatService.appendNewGroup(groupId)
-                page <- pageF
-                result <- page.renderPage(data, formId, None)
-              } yield result
-
-            case RemoveGroup(groupId) =>
-              for {
-                updatedData <- repeatService.removeGroup(groupId, data)
-                page <- pageF
-                result <- page.renderPage(updatedData, formId, None)
-              } yield result
+            case SaveAndSummary => processSaveAndContinue(finalResult, formId, sectionNumber, data)(Future.successful(Redirect(routes.SummaryGen.summaryById(formId))))
+            case AddGroup(groupId) => GroupAdd(groupId, formId, sectionNumber)(data)
+            case RemoveGroup(groupId) => GroupRemove(groupId, formId, sectionNumber)(data)
           }
         case Left(error) => Future.successful(BadRequest(error))
       }
-
     }
-
   }
 
-  def processSaveAndExit(finalResult: Future[Either[List[FormFieldValidationResult], List[FormFieldValidationResult]]], formId: FormId)(implicit authContext : AuthContext, hc: HeaderCarrier, request: Request[AnyContent]): Future[Result] = {
+  private def GroupAdd(groupId: String, formId: FormId, sectionNumber: SectionNumber)(data: Map[FieldId, Seq[String]])(implicit hc: HeaderCarrier, authContext: AuthContext, request: Request[AnyContent]) = {
+    for {
+      _ <- repeatService.appendNewGroup(groupId)
+      page <- pageF(formId, sectionNumber)
+      result <- page.renderPage(data, formId, None)
+    } yield result
+  }
+
+  private def GroupRemove(groupId: String, formId: FormId, sectionNumber: SectionNumber)(data: Map[FieldId, Seq[String]])(implicit hc: HeaderCarrier, authContext: AuthContext, request: Request[AnyContent]) = {
+    for {
+      updatedData <- repeatService.removeGroup(groupId, data)
+      page <- pageF(formId, sectionNumber)
+      result <- page.renderPage(updatedData, formId, None)
+    } yield result
+  }
+
+  private def processSaveAndContinue(finalResult: Future[Either[List[FormFieldValidationResult], List[FormFieldValidationResult]]], formId: FormId, sectionNumber: SectionNumber, data: Map[FieldId, Seq[String]])(continue: Future[Result])(implicit hc: HeaderCarrier, authContext: AuthContext, request: Request[AnyContent]): Future[Result] = {
+
+    def process(userId: UserId, form: Form)(continue: Future[Result])(implicit hc: HeaderCarrier) = finalResult.flatMap {
+      case Left(listFormValidation) =>
+        val map: Map[FieldValue, FormFieldValidationResult] = listFormValidation.map { (validResult: FormFieldValidationResult) =>
+          extractedFieldValue(validResult) -> validResult
+        }.toMap
+
+        pageF(formId, sectionNumber).flatMap(page => page.renderPage(data, formId, Some(map.get)))
+
+      case Right(listFormValidation) =>
+
+        val formFieldIds = listFormValidation.map(_.toFormField)
+        val formFields = formFieldIds.sequenceU.map(_.flatten).toList.flatten
+
+        val formData = FormData(userId, form.formData.formTypeId, "UTF-8", formFields)
+
+        SaveService.updateFormData(formId, formData, false).flatMap {
+          case SaveResult(_, Some(error)) => Future.successful(BadRequest(error))
+          case _ =>
+
+            continue
+        }
+    }
+
+    for {
+      userId <- userIdF(authContext)
+      form <- formF(formId)
+      result <- process(userId, form)(continue)
+    } yield result
+}
+
+  private def processSaveAndExit(finalResult: Future[Either[List[FormFieldValidationResult], List[FormFieldValidationResult]]], formId: FormId)(implicit authContext : AuthContext, hc: HeaderCarrier, request: Request[AnyContent]): Future[Result] = {
 
     def process(userId: UserId, form: Form, envelopeId: EnvelopeId) = {
       val formFieldsList: Future[List[FormFieldValidationResult]] = finalResult.map {
@@ -313,6 +284,37 @@ class FormController @Inject() (
       result <- process(userId, form, envelopeId)
     } yield result
   }
+
+  private def userIdF(authContext: AuthContext)(implicit hc: HeaderCarrier): Future[UserId] =
+    authConnector.getUserDetails[UserId](authContext)
+
+  private def formF(formId: FormId)(implicit hc: HeaderCarrier): Future[Form] =
+    gformConnector.getForm(formId)
+
+  private def envelopeIdF(formF: Future[Form])(implicit hc: HeaderCarrier): Future[EnvelopeId] =
+    formF.map(_.envelopeId)
+
+  private def envelopeF(formId: FormId)(implicit hc: HeaderCarrier) = for {
+    envelopeId <- envelopeIdF(formF(formId))
+    envelope <- fileUploadService.getEnvelope(envelopeId)
+  } yield envelope
+
+  private def formTemplateF(formId: FormId)(implicit hc: HeaderCarrier): Future[FormTemplate] = for {
+    form <- formF(formId)
+    formTemplate <- gformConnector.getFormTemplate(form.formData.formTypeId)
+  } yield formTemplate
+
+  private def pageF(formId: FormId, sectionNumber: SectionNumber)(implicit hc: HeaderCarrier) = for {
+    form <- formF(formId)
+    envelope <- envelopeF(formId)
+    formTemplate <- formTemplateF(formId)
+  } yield Page(formId, sectionNumber, formTemplate, repeatService, envelope, form.envelopeId, prepopService)
+
+  private def atomicFields(formId: FormId, sectionNumber: SectionNumber)(implicit hc: HeaderCarrier) = for {
+    formTemplate <- formTemplateF(formId)
+    sections <- repeatService.getAllSections(formTemplate)
+    section = sections(sectionNumber.value)
+  } yield section.atomicFields(repeatService)
 
   private def extractedFieldValue(validResult: FormFieldValidationResult): FieldValue = validResult match {
     case FieldOk(fv, _) => fv
