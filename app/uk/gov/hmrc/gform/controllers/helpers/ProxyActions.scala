@@ -65,7 +65,8 @@ class ProxyActions @Inject() (wsClient: WSClient) {
   )
 
   private def processHeaders(inboundHeaders: Headers, extraHeaders: Seq[(String, String)]): Seq[(String, String)] = {
-    inboundHeaders.toSimpleMap.filter(headerKeyValue => !headerKeyValue._1.equals("Host")) ++ extraHeaders.toMap toSeq
+    val map = inboundHeaders.toSimpleMap + ("User-Agent" -> "proxied-by-gform")
+    map.filter(headerKeyValue => !headerKeyValue._1.equals("Host")) ++ extraHeaders.toMap toSeq
   }
 
   private def streamedBodyParser: BodyParser[Source[ByteString, _]] = BodyParser { _ => Accumulator.source[ByteString].map(Right.apply) }
