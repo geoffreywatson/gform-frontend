@@ -309,4 +309,3 @@ class SectionRenderingService @Inject() (repeatService: RepeatingComponentServic
     agentCode = None
   )
 }
-
