@@ -200,7 +200,7 @@ class SectionRenderingService @Inject() (repeatService: RepeatingComponentServic
       case None => selections.map(_.toString).toSet
       case Some(_) => Set.empty[String] // Don't prepop something we already submitted
     }
-    val optionalHelpTextMarkDown = optionalHelpText.map(_.map(markDownParser)).map(_.map(x => Html(addTargetToLinks(x))))
+    val optionalHelpTextMarkDown = optionalHelpText.map(_.map(markDownParser)).map(_.map(x => Html(addTargetToLinks(x)))).getOrElse(List.empty[Html])
 
     val validatedValue = validate(fieldValue, ei, validatedType)
 

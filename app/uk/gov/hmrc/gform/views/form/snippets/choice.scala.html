@@ -16,7 +16,7 @@ options: NonEmptyList[String],
 orientation: Orientation,
 prepop: Set[String],
 validationResult: Option[FormFieldValidationResult],
-optionHelpText: Option[List[Html]],
+optionHelpText: List[Html],
 index: Int
 )
 <div class="form-group">
@@ -54,9 +54,9 @@ index: Int
                 @option
             </label>
 
-            @if(optionHelpText) {
+            @if(optionHelpText.isEmpty) {
                 <div id="helptext-@{fieldValue.id}@index" class="panel-indent js-hidden panel panel-info" aria-hidden="true">
-                    @Html(optionHelpText.getOrElse(List.empty)(index).body)
+                    @Html(optionHelpText(index).body)
                 </div>
             }
           }
