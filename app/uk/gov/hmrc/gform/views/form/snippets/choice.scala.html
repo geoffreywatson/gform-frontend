@@ -54,7 +54,7 @@ index: Int
                 @option
             </label>
 
-            @if(optionHelpText.isEmpty) {
+            @if(optionHelpText.nonEmpty) {
                 <div id="helptext-@{fieldValue.id}@index" class="panel-indent js-hidden panel panel-info" aria-hidden="true">
                     @Html(optionHelpText(index).body)
                 </div>
