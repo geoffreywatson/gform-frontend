@@ -11,7 +11,7 @@
 
 @import uk.gov.hmrc.gform.validation.FormFieldValidationResult
 @(inputType: String,
-fieldValue: FormComponent,
+fieldValue: FieldValue,
 options: NonEmptyList[String],
 orientation: Orientation,
 prepop: Set[String],
@@ -35,38 +35,56 @@ sectionTitle: String
 
             @errorInline(fieldValue.id.value, fieldValue.errorMessage.getOrElse("Please enter required data"), Seq(""))
 
-            <div id="@{fieldValue.id}">
-                @options.toList.zipWithIndex.map{ case (option, index) =>
-                <div
-                  class="multiple-choice"
-                  @if(optionHelpText(index).body.nonEmpty) {
-                  data-target="helptext-@{fieldValue.id}@index"
-                  }>
-                    <input id="@{fieldValue.id}@index"
-                           name="@{fieldValue.id}"
-                           value="@index"
-                           type="@inputType"
-                           @if(optionHelpText(index).body.nonEmpty) {
-                           aria-controls="helptext-@{fieldValue.id}@index"
-                           aria-expanded="false"
-                           }
-                           @validationResult.flatMap(_.getOptionalCurrentValue(fieldValue.id.value +
-                           index.toString)).orElse(prepop.find(_== index.toString)).map(_=> "checked").getOrElse("") />
+            <div id="@{fieldValue.id}" class="@if(orientation.toString.toLowerCase.equals("horizontal")) {inline}">
+            @options.toList.zipWithIndex.map{ case (option, index) =>
+            @if(optionHelpText.nonEmpty && optionHelpText(index).body.nonEmpty) {
+            <label
+                    for="@{fieldValue.id}@index"
+                    class="block-label selection-button-radio"
+                    data-target="helptext-@{fieldValue.id}@index">
+                <input
+                        id="@{fieldValue.id}@index"
+                        name="@{fieldValue.id}"
+                        value="@index"
+                        type="@inputType"
+                        aria-controls="helptext-@{fieldValue.id}@index"
+                        aria-expanded="false"
+                        @validationResult.flatMap(_.getOptionalCurrentValue(fieldValue.id.value +
+                        index.toString)).orElse(prepop.find(_== index.toString)).map(_=> "checked").getOrElse("") />
+                @option
+            </label>
 
-                    <label for="@{fieldValue.id}@index">
-                      @option
-                    </label>
-                </div>
-
-                @if(optionHelpText.nonEmpty) {
-                    @if(optionHelpText(index).body.nonEmpty){
-                    <div id="helptext-@{fieldValue.id}@index" class="panel-indent js-hidden panel panel-info" aria-hidden="true">
-                        @Html(optionHelpText(index).body)
-                    </div>
-                    }
-                  }
-                }
+            @if(orientation.toString.toLowerCase.equals("vertical")) {
+            <div id="helptext-@{fieldValue.id}@index" class="panel-indent js-hidden panel panel-info" aria-hidden="true">
+                @Html(optionHelpText(index).body)
             </div>
-        </fieldset>
+            }
+            } else {
+            <label
+                    for="@{fieldValue.id}@index"
+                    class="block-label selection-button-radio">
+                <input
+                        id="@{fieldValue.id}@index"
+                        name="@{fieldValue.id}"
+                        value="@index"
+                        type="@inputType"
+                        @validationResult.flatMap(_.getOptionalCurrentValue(fieldValue.id.value +
+                        index.toString)).orElse(prepop.find(_== index.toString)).map(_=> "checked").getOrElse("") />
+                @option
+            </label>
+            }
+            }
     </div>
+
+    @if(orientation.toString.toLowerCase.equals("horizontal")) {
+    @options.toList.zipWithIndex.map{ case (option, index) =>
+    @if(optionHelpText.nonEmpty && optionHelpText(index).body.nonEmpty) {
+    <div id="helptext-@{fieldValue.id}@index" class="panel-indent js-hidden panel panel-info" aria-hidden="true">
+        @Html(optionHelpText(index).body)
+    </div>
+    }
+    }
+    }
+    </fieldset>
+</div>
 </div>
