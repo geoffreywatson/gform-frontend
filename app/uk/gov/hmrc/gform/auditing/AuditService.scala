@@ -119,13 +119,12 @@ trait AuditService {
       auditSource = "GForm",
       auditType = "submission complete auditing",
       tags = hc.headers.toMap,
-      eventId = eventId,
       detail = Map(
         "hashType" -> "sha256",
         "hashedValue" -> hashedValue,
-        "formData" -> formString
-
-      )
+        "formData" -> formString,
+        "formSubmissionEventId" -> eventId
+        )
     )
     x
   }
