@@ -160,8 +160,8 @@ button.link-back:visited {
 }
 
 .inline .form-group {
-  width: 50%;
   float: none;
+  white-space: nowrap;
   display: inline-block;
   vertical-align: bottom;
 }
