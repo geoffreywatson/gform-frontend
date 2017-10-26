@@ -67,7 +67,8 @@ object PdfGeneratorService {
   // TODO TDC: Delete application.min.css from source code and only send HTML once the pdf-service is caching CSS
   lazy val css: String = {
     val is = getClass.getResourceAsStream("/reduced-application.min.css")
-    scala.io.Source.fromInputStream(is).getLines.mkString
+    val gf = getClass.getResourceAsStream("/reduced-gform.min.css")
+    scala.io.Source.fromInputStream(is).getLines.mkString + scala.io.Source.fromInputStream(gf).getLines().mkString
   }
 
 }
